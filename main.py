@@ -289,7 +289,7 @@ def main_polynomial(filename: str, is_plots_required: bool, k: int) -> Vector:
 
 def main_exponential(filename: str, is_plots_required: bool) -> Vector:
     """
-    Подпрограмма для экспоненциальной аппроксимации n-степени методом МНК
+    Подпрограмма для экспоненциальной аппроксимации методом МНК
     f(x) = a * exp(x) + b
     :param filename:          имя файла с исходными данными для аппроксимации
     :param is_plots_required: нужно ли строить график
@@ -371,10 +371,9 @@ def main_exponential(filename: str, is_plots_required: bool) -> Vector:
     return f
 
 
-
 def main_exponential_with_k(filename: str, is_plots_required: bool) -> Vector:
     """
-    Подпрограмма для экспоненциальной аппроксимации n-степени методом МНК
+    Подпрограмма для экспоненциальной аппроксимации методом МНК
     f(x) = a * exp(k * x) + b
     :param filename:          имя файла с исходными данными для аппроксимации
     :param is_plots_required: нужно ли строить график
@@ -479,14 +478,213 @@ def main_exponential_with_k(filename: str, is_plots_required: bool) -> Vector:
 
     return f
 
+
+def main_logarithmic(filename: str, is_plots_required: bool) -> Vector:
+    """
+    Подпрограмма для логарифмической аппроксимации методом МНК
+    f(x) = a * ln(x) + b
+    :param filename:          имя файла с исходными данными для аппроксимации
+    :param is_plots_required: нужно ли строить график
+    :returns Vector:          выходные значения аппроксимированной функции
+    """
+
+    print(f"Начало считывания входных значений из файла \"{filename}\"")
+
+    x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
+
+    n = len(x)  # количество отсчётов
+    if n != len(y):       # если определитель близок к нулю
+        raise ValueError  # выбрасывается исключение
+
+    print(f"Успешно считано {n} значений:")
+    print("x: " + "  ".join(map(str, x)))
+    print("y: " + "  ".join(map(str, y)))
+
+    s: Vector = [0.0, 0.0, 0.0, 0.0]  # промежуточные суммы
+
+    for xi, yi in zip(x, y):  # перебираем значения x и y
+        s[0] += math.log(xi)       # sum(ln(x))
+        s[1] += math.log(xi) ** 2  # sum(ln(x)^2)
+        s[2] += yi                 # sum(y)
+        s[3] += math.log(xi) * yi  # sum(ln(x) * y)
+
+    # определители
+    det: float   = calculate_determinatorN([[s[1], s[0]],
+                                            [s[0],    n]])
+    det_a: float = calculate_determinatorN([[s[3], s[0]],
+                                            [s[2],    n]])
+    det_b: float = calculate_determinatorN([[s[1], s[3]],
+                                            [s[0], s[2]]])
+
+    if abs(det) < 1e-9:
+        raise ValueError
+
+    # коэффициенты логарифмической аппроксимации
+    a: float = det_a / det
+    b: float = det_b / det
+
+    f: Vector = [a * math.log(x[i]) + b for i in range(n)]    # аппроксимирующая функция
+    e: Vector = [f[i] - y[i] for i in range(n)]       # ошибки воспроизведения
+    e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадраты ошибок
+
+    SE = calculate_squared_error(e)  # сумма квадратов ошибок
+
+    MAE = calculate_max_absolute_error(e)  # максимальная абсолютная ошибка
+
+    # вывод результатов
+
+    print("Промежуточные суммы:")
+    print("; ".join(map(lambda x: f"s{x + 1}={s[x]}", range(len(s)))))
+
+    print("Определители:")
+    print(f"{det=}; {det_a=}; {det_b=}")
+
+    print("Коэффициенты логарифмической аппроксимирующей функции:")
+    print(f"{a=}; {b=}")
+
+    print("Расчёт точности воспроизведения:")
+    print(build_table([x, y, f, e, e_square],
+                      ["x", "y", "f=a*ln(x)+b", "e=f-y", "e^2"]))
+    print("Мера отклонения:")
+    print(f"{SE=}")
+    print("Максимальная абсолютная ошибка:")
+    print(f"{MAE=}")
+
+    if is_plots_required:  # формирование графика
+        plt.plot(x, y, "o", label="исходные данные")
+        plt.plot(x, f, "-", label="аппроксимация")
+        plt.legend(loc="best")
+        plt.grid()
+        title: str = "Логарифмическая аппроксимация"
+        plt.title(title)
+
+        plt.show()
+
+    return f
+
+
+def main_logarithmic_with_k(filename: str, is_plots_required: bool) -> Vector:
+    """
+    Подпрограмма для логарифмической аппроксимации методом МНК
+    f(x) = a * ln(k + x) + b
+    :param filename:          имя файла с исходными данными для аппроксимации
+    :param is_plots_required: нужно ли строить график
+    :returns Vector:          выходные значения аппроксимированной функции
+    """
+
+    print(f"Начало считывания входных значений из файла \"{filename}\"")
+
+    x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
+
+    n = len(x)  # количество отсчётов
+    if n != len(y):       # если определитель близок к нулю
+        raise ValueError  # выбрасывается исключение
+
+    print(f"Успешно считано {n} значений:")
+    print("x: " + "  ".join(map(str, x)))
+    print("y: " + "  ".join(map(str, y)))
+
+    # поиск k с постепенным снижением области поиска и шага поиска
+    k_max:    float = 25              # максимальная амплитуда поиска
+    k_min:    float = 10e-6           # минимальная длина интервала поиска
+    best_k:   float = 25.0            # середина интервала поиска
+    best_SE:  float = float("inf")    # лучшая мера отколнения
+    best_MAE: float = float("inf")    # лучшая абсолютная ошибка
+    k_left:   float = best_k - k_max  # левая граница поиска
+    k_right:  float = best_k + k_max  # правая граница поиска
+    while abs(k_left - k_right) > k_min:  # пока интервал больше минимального значения
+        k_values: Vector = lin_space(k_left, k_right, 21)  # откладываем от середины влево и вправо по 10 значений
+        for k in k_values:  # перебираем значения k
+            try:  # оборачиваем в try-except из-за возможных переполнений
+                s: Vector = [0.0, 0.0, 0.0, 0.0]  # промежуточные суммы
+
+                for xi, yi in zip(x, y):  # перебираем значения x и y
+                    s[0] += math.log(xi + k)       # sum(ln(x))
+                    s[1] += math.log(xi + k) ** 2  # sum(ln(x)^2)
+                    s[2] += yi                     # sum(y)
+                    s[3] += math.log(xi + k) * yi  # sum(ln(x) * y)
+
+                # определители
+                det: float   = calculate_determinatorN([[s[1], s[0]],
+                                                        [s[0],    n]])
+                det_a: float = calculate_determinatorN([[s[3], s[0]],
+                                                        [s[2],    n]])
+                det_b: float = calculate_determinatorN([[s[1], s[3]],
+                                                        [s[0], s[2]]])
+
+                if abs(det) < 1e-9:  # если определитель нулевой
+                    continue         # берем следующее k
+
+                # коэффициенты экспоненциальной аппроксимации
+                a: float = det_a / det
+                b: float = det_b / det
+
+                f: Vector = [a * math.log(k + x[i]) + b for i in range(n)]    # аппроксимирующая функция
+                e: Vector = [f[i] - y[i] for i in range(n)]       # ошибки воспроизведения
+                e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадраты ошибок
+
+                SE = calculate_squared_error(e)  # сумма квадратов ошибок
+
+                MAE = calculate_max_absolute_error(e)  # максимальная абсолютная ошибка
+
+                if SE < best_SE:   # если текущие результаты лучше наилучших
+                    best_SE  = SE  # то запоминаем текущие результаты
+                    best_MAE = MAE
+                    best_k   = k
+
+            except OverflowError:
+                continue
+
+        # после перебора всех k сужаем границы поиска
+        k_left  = k_values[max(k_values.index(best_k) - 1, 0)]
+        k_right = k_values[min(k_values.index(best_k) + 1, len(k_values) - 1)]
+
+    # вывод результатов
+
+    print("Промежуточные суммы:")
+    print("; ".join(map(lambda x: f"s{x + 1}={s[x]}", range(len(s)))))
+
+    print("Определители:")
+    print(f"{det=}; {det_a=}; {det_b=}")
+
+    print("Коэффициенты логарифмической аппроксимирующей функции:")
+    print(f"{a=}; {b=}; k={best_k}")
+
+    print("Расчёт точности воспроизведения:")
+    print(build_table([x, y, f, e, e_square],
+                      ["x", "y", "f=a*ln(k+x)+b", "e=f-y", "e^2"]))
+    print("Мера отклонения:")
+    print(f"SE={best_SE}")
+    print("Максимальная абсолютная ошибка:")
+    print(f"MAE={best_MAE}")
+
+    if is_plots_required:  # формирование графика
+        plt.plot(x, y, "o", label="исходные данные")
+        plt.plot(x, f, "-", label="аппроксимация")
+        plt.legend(loc="best")
+        plt.grid()
+        title: str = "Логарифмическая аппроксимация"
+        plt.title(title)
+
+        plt.show()
+
+    return f
+
+
+
+
 if __name__ == "__main__":
     filename = "input.csv"  # имя файла с исходными данными для аппроксимации
     is_plots_required = True  # нужно ли строить графики
+
     # main_polynomial(filename, is_plots_required, 1)
     # main_polynomial(filename, is_plots_required, 2)
     # main_polynomial(filename, is_plots_required, 3)
     # main_polynomial(filename, is_plots_required, 4)
     # main_polynomial(filename, is_plots_required, 5)
 
-    main_exponential(filename, is_plots_required)
-    main_exponential_with_k(filename, is_plots_required)
+    # main_exponential(filename, is_plots_required)
+    # main_exponential_with_k(filename, is_plots_required)
+
+    main_logarithmic(filename, is_plots_required)
+    main_logarithmic_with_k(filename, is_plots_required)
