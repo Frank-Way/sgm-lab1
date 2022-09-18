@@ -1,3 +1,5 @@
+import math
+
 from matplotlib import pyplot as plt
 import csv
 from typing import List, Tuple
@@ -5,6 +7,18 @@ from typing import List, Tuple
 
 Vector = List[float]   # список вещественных чисел
 Matrix = List[Vector]  # список векторов
+
+
+def lin_space(start: float, stop: float, size: int) -> Vector:
+    result: Vector = [0.0 for i in range(size)]
+    step:   float  = (stop - start) / (size - 1)
+    value:  float  = start
+    for i in range(size):
+        result[i] = value
+        value    += step
+    return result
+
+
 
 def get_rows_and_cols(matrix: Matrix) -> Tuple[int, int]:
     """
@@ -201,15 +215,14 @@ def calculate_determinatorN(matrix: Matrix, result: float = 0.0) -> float:
     return result
 
 
-def main_polynomial(is_plots_required: bool, k: int) -> Vector:
+def main_polynomial(filename: str, is_plots_required: bool, k: int) -> Vector:
     """
     Подпрограмма для полиномильной аппроксимации n-степени методом МНК
+    :param filename:          имя файла с исходными данными для аппроксимации
     :param is_plots_required: нужно ли строить график
     :param k:                 степень аппроксимирующего полинома
     :returns Vector:          выходные значения аппроксимированной функции
     """
-    filename = "input.csv"  # имя файла с исходными данными для аппроксимации
-
     print(f"Начало считывания входных значений из файла \"{filename}\"")
 
     x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
@@ -250,7 +263,7 @@ def main_polynomial(is_plots_required: bool, k: int) -> Vector:
     print("Определители:")
     print(f"{det=}; " + "; ".join(map(lambda x: f"det_a{x}={coef_dets[x]}", range(len(coef_dets)))))
 
-    print("Коэффициенты аппроксимирующей функции:")
+    print("Коэффициенты полиномиальной аппроксимирующей функции:")
     print("; ".join(map(lambda x: f"a{x}={coefs[x]}", range(len(coefs)))))
 
     print("Расчёт точности воспроизведения:")
@@ -274,10 +287,206 @@ def main_polynomial(is_plots_required: bool, k: int) -> Vector:
     return f
 
 
+def main_exponential(filename: str, is_plots_required: bool) -> Vector:
+    """
+    Подпрограмма для экспоненциальной аппроксимации n-степени методом МНК
+    f(x) = a * exp(x) + b
+    :param filename:          имя файла с исходными данными для аппроксимации
+    :param is_plots_required: нужно ли строить график
+    :returns Vector:          выходные значения аппроксимированной функции
+    """
+
+    print(f"Начало считывания входных значений из файла \"{filename}\"")
+
+    x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
+
+    n = len(x)  # количество отсчётов
+    if n != len(y):       # если определитель близок к нулю
+        raise ValueError  # выбрасывается исключение
+
+    print(f"Успешно считано {n} значений:")
+    print("x: " + "  ".join(map(str, x)))
+    print("y: " + "  ".join(map(str, y)))
+
+    s: Vector = [0.0, 0.0, 0.0, 0.0]  # промежуточные суммы
+
+    for xi, yi in zip(x, y):       # перебираем значения x и y
+        s[0] += math.exp(xi)       # sum(e^x)
+        s[1] += math.exp(2 * xi)   # sum(e^2x)
+        s[2] += yi                 # sum(y)
+        s[3] += math.exp(xi) * yi  # sum(e^x * y)
+
+    # определители
+    det: float   = calculate_determinatorN([[s[1], s[0]],
+                                            [s[0], n]])
+    det_a: float = calculate_determinatorN([[s[3], s[0]],
+                                            [s[2], n]])
+    det_b: float = calculate_determinatorN([[s[1], s[3]],
+                                            [s[0], s[2]]])
+
+    if abs(det) < 1e-9:
+        raise ValueError
+
+    # коэффициенты экспоненциальной аппроксимации
+    a: float = det_a / det
+    b: float = det_b / det
+
+    f: Vector = [a * math.exp(x[i]) + b for i in range(n)]    # аппроксимирующая функция
+    e: Vector = [f[i] - y[i] for i in range(n)]       # ошибки воспроизведения
+    e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадраты ошибок
+
+    SE = calculate_squared_error(e)  # сумма квадратов ошибок
+
+    MAE = calculate_max_absolute_error(e)  # максимальная абсолютная ошибка
+
+    # вывод результатов
+
+    print("Промежуточные суммы:")
+    print("; ".join(map(lambda x: f"s{x + 1}={s[x]}", range(len(s)))))
+
+    print("Определители:")
+    print(f"{det=}; {det_a=}; {det_b=}")
+
+    print("Коэффициенты экспоненциальной аппроксимирующей функции:")
+    print(f"{a=}; {b=}")
+
+    print("Расчёт точности воспроизведения:")
+    print(build_table([x, y, f, e, e_square],
+                      ["x", "y", "f=a*exp(x)+b", "e=f-y", "e^2"]))
+    print("Мера отклонения:")
+    print(f"{SE=}")
+    print("Максимальная абсолютная ошибка:")
+    print(f"{MAE=}")
+
+    if is_plots_required:  # формирование графика
+        plt.plot(x, y, "o", label="исходные данные")
+        plt.plot(x, f, "-", label="аппроксимация")
+        plt.legend(loc="best")
+        plt.grid()
+        title: str = "Экспоненциальная аппроксимация"
+        plt.title(title)
+
+        plt.show()
+
+    return f
+
+
+
+def main_exponential_with_k(filename: str, is_plots_required: bool) -> Vector:
+    """
+    Подпрограмма для экспоненциальной аппроксимации n-степени методом МНК
+    f(x) = a * exp(k * x) + b
+    :param filename:          имя файла с исходными данными для аппроксимации
+    :param is_plots_required: нужно ли строить график
+    :returns Vector:          выходные значения аппроксимированной функции
+    """
+
+    print(f"Начало считывания входных значений из файла \"{filename}\"")
+
+    x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
+
+    n = len(x)  # количество отсчётов
+    if n != len(y):       # если определитель близок к нулю
+        raise ValueError  # выбрасывается исключение
+
+    print(f"Успешно считано {n} значений:")
+    print("x: " + "  ".join(map(str, x)))
+    print("y: " + "  ".join(map(str, y)))
+
+    # поиск k с постепенным снижением области поиска и шага поиска
+    k_max:    float = 10              # максимальная амплитуда поиска
+    k_min:    float = 10e-6           # минимальная длина интервала поиска
+    best_k:   float = 0.0             # середина интервала поиска
+    best_SE:  float = float("inf")    # лучшая мера отколнения
+    best_MAE: float = float("inf")    # лучшая абсолютная ошибка
+    k_left:   float = best_k - k_max  # левая граница поиска
+    k_right:  float = best_k + k_max  # правая граница поиска
+    while abs(k_left - k_right) > k_min:  # пока интервал больше минимального значения
+        k_values: Vector = lin_space(k_left, k_right, 21)  # откладываем от середины влево и вправо по 10 значений
+        for k in k_values:  # перебираем значения k
+            try:  # оборачиваем в try-except из-за возможных переполнений
+                s: Vector = [0.0, 0.0, 0.0, 0.0]  # промежуточные суммы
+
+                for xi, yi in zip(x, y):  # перебираем значения x и y
+                    s[0] += math.exp(k * xi)       # sum(e^x)
+                    s[1] += math.exp(2 * k * xi)   # sum(e^2x)
+                    s[2] += yi                  # sum(y)
+                    s[3] += math.exp(k * xi) * yi  # sum(e^x * y)
+
+                # определители
+                det: float   = calculate_determinatorN([[s[1], s[0]],
+                                                        [s[0], n   ]])
+                det_a: float = calculate_determinatorN([[s[3], s[0]],
+                                                        [s[2], n   ]])
+                det_b: float = calculate_determinatorN([[s[1], s[3]],
+                                                        [s[0], s[2]]])
+
+                if abs(det) < 1e-9:  # если определитель нулевой
+                    continue         # берем следующее k
+
+                # коэффициенты экспоненциальной аппроксимации
+                a: float = det_a / det
+                b: float = det_b / det
+
+                f: Vector = [a * math.exp(k * x[i]) + b for i in range(n)]    # аппроксимирующая функция
+                e: Vector = [f[i] - y[i] for i in range(n)]       # ошибки воспроизведения
+                e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадраты ошибок
+
+                SE = calculate_squared_error(e)  # сумма квадратов ошибок
+
+                MAE = calculate_max_absolute_error(e)  # максимальная абсолютная ошибка
+
+                if SE < best_SE:   # если текущие результаты лучше наилучших
+                    best_SE  = SE  # то запоминаем текущие результаты
+                    best_MAE = MAE
+                    best_k   = k
+
+            except OverflowError:
+                continue
+
+        # после перебора всех k сужаем границы поиска
+        k_left  = k_values[max(k_values.index(best_k) - 1, 0)]
+        k_right = k_values[min(k_values.index(best_k) + 1, len(k_values) - 1)]
+
+    # вывод результатов
+
+    print("Промежуточные суммы:")
+    print("; ".join(map(lambda x: f"s{x + 1}={s[x]}", range(len(s)))))
+
+    print("Определители:")
+    print(f"{det=}; {det_a=}; {det_b=}")
+
+    print("Коэффициенты экспоненциальной аппроксимирующей функции:")
+    print(f"{a=}; {b=}; k={best_k}")
+
+    print("Расчёт точности воспроизведения:")
+    print(build_table([x, y, f, e, e_square],
+                      ["x", "y", "f=a*exp(k*x)+b", "e=f-y", "e^2"]))
+    print("Мера отклонения:")
+    print(f"SE={best_SE}")
+    print("Максимальная абсолютная ошибка:")
+    print(f"MAE={best_MAE}")
+
+    if is_plots_required:  # формирование графика
+        plt.plot(x, y, "o", label="исходные данные")
+        plt.plot(x, f, "-", label="аппроксимация")
+        plt.legend(loc="best")
+        plt.grid()
+        title: str = "Экспоненциальная аппроксимация"
+        plt.title(title)
+
+        plt.show()
+
+    return f
+
 if __name__ == "__main__":
-    is_plots_required = False  # нужно ли строить графики
-    main_polynomial(is_plots_required, 1)
-    main_polynomial(is_plots_required, 2)
-    main_polynomial(is_plots_required, 3)
-    main_polynomial(is_plots_required, 4)
-    main_polynomial(is_plots_required, 5)
+    filename = "input.csv"  # имя файла с исходными данными для аппроксимации
+    is_plots_required = True  # нужно ли строить графики
+    # main_polynomial(filename, is_plots_required, 1)
+    # main_polynomial(filename, is_plots_required, 2)
+    # main_polynomial(filename, is_plots_required, 3)
+    # main_polynomial(filename, is_plots_required, 4)
+    # main_polynomial(filename, is_plots_required, 5)
+
+    main_exponential(filename, is_plots_required)
+    main_exponential_with_k(filename, is_plots_required)
