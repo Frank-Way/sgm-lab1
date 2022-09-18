@@ -3,7 +3,36 @@ import csv
 from typing import List, Tuple
 
 
-Vector = List[float]  # список вещественных чисел
+Vector = List[float]   # список вещественных чисел
+Matrix = List[Vector]  # список векторов
+
+def get_rows_and_cols(matrix: Matrix) -> Tuple[int, int]:
+    """
+    Получение размеров матрицы
+    :param matrix: матрица
+    :return:       кортеж [строки, столбцы]
+    """
+    return len(matrix), len(matrix[0])
+
+
+def replace_col(matrix: Matrix, col: Vector, col_index: int) -> Matrix:
+    """
+    Замена столбца матрицы
+    :param matrix:    исходная матрица
+    :param col:       заменяющий столбец
+    :param col_index: индекс столбца для замены в матрице
+    :return:          матрица с замененным столбцом
+    """
+    rows, cols = get_rows_and_cols(matrix)
+    result: Matrix = [[0 for j in range(cols)] for i in range(rows)]
+    for j in range(cols):
+        if j == col_index:
+            for i in range(rows):
+                result[i][j] = col[i]
+        else:
+            for i in range(rows):
+                result[i][j] = matrix[i][j]
+    return result
 
 
 def read_inputs(filename: str) -> Tuple[Vector, Vector]:
@@ -22,32 +51,6 @@ def read_inputs(filename: str) -> Tuple[Vector, Vector]:
             x.append(float(row["x"]))
             y.append(float(row["y"]))
     return x, y  # возврат результата
-
-
-def calculate_sums2(x: Vector, y: Vector) -> Tuple[float, float, float, float]:
-    """
-    Вычисление s1, s2, s3, s4
-    :param x: отсчёты аппроксимируемой функции по X
-    :param y: отсчёты аппроксимируемой функции по Y
-    :return: кортеж сумм: сумма(х), сумма(x*x), сумма(y), сумма(x*y)
-    """
-    n: int = len(x)  # количество отсчётов
-    return (sum(x),                                # s1
-            sum([x[i] * x[i] for i in range(n)]),  # s2
-            sum(y),                                # s3
-            sum([x[i] * y[i] for i in range(n)]))  # s4
-
-
-def calculate_determinator2(a00: float, a01: float, a10: float, a11: float) -> float:
-    """
-    Вычисление определителя матрицы 2x2
-    :param a00: 0й элемент 0й строки матрицы
-    :param a01: 1й элемент 0й строки матрицы
-    :param a10: 0й элемент 1й строки матрицы
-    :param a11: 1й элемент 1й строки матрицы
-    :return: определитель = a00 * a11 - a01 * a10
-    """
-    return a00 * a11 - a01 * a10
 
 
 def calculate_squared_error(errors: Vector) -> float:
@@ -77,10 +80,11 @@ def build_table(columns: List[Vector], headers: List[str]) -> str:
     """
     rows: int = len(columns[0])  # количество строк таблицы
     cols: int = len(columns)  # количество колонок таблицы
+    s_columns = [[str(column[i]) if type(column[i]) == int else f"{column[i]:.6}".strip() for column in columns] for i in range(rows)]
     # ширины столбцов
     col_widths: List[int] = [len(str(cols))] + \
-                            [max(max(map(len, map(str, columns[i]))),
-                                 max(map(len, headers[i])))
+                            [max(max(map(len, map(str, s_columns[i]))),
+                                 len(headers[i]))
                              for i in range(cols)]
     col_separator: str = "|"  # разделитель столбцов от заголовков
     row_separator: str = "-"  # разделитель строк от заголовков
@@ -90,7 +94,7 @@ def build_table(columns: List[Vector], headers: List[str]) -> str:
     separator = separator[:pos] + "+" + separator[pos + 1:]
     body = ""  # тело таблицы
     for i in range(rows):
-        body = body + build_row([str(i)], [str(column[i]) for column in columns], col_widths, col_separator) + "\n"
+        body = body + build_row([str(i)], s_columns[i], col_widths, col_separator) + "\n"
     return header + "\n" + separator + "\n" + body
 
 
@@ -125,162 +129,114 @@ def put_to_cell(string: str, col_width: int) -> str:
     return " " + " " * (col_width - len(string)) + string + " "
 
 
-def main_linear(is_plots_required: bool) -> None:
+def build_header_function(k: int) -> str:
     """
-    Подпрограмма для линейной аппроксимации
-    :param is_plots_required: нужно ли строить график
+    Получение строки с полиномом f(x)=a0+a1*x+...+ak*x^k
+    :param k: степень полинома
+    :return:  строка, представляющая полином
     """
-    filename = "input.csv"  # имя файла с исходными данными для линейной аппроксимации
-
-    print(f"Начало считывания входных значений из файла \"{filename}\"")
-
-    x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
-
-    n = len(x)  # количество отсчётов
-    if n != len(y):
-        raise ValueError
-
-    print(f"Успешно считано {n} значений:")
-    print("x: " + "  ".join(map(str, x)))
-    print("y: " + "  ".join(map(str, y)))
-
-    s1, s2, s3, s4 = calculate_sums2(x, y)  # промежуточные суммы
-
-    # определители
-    det: float = calculate_determinator2(s1, n,
-                                         s2, s1)
-    det_a0: float = calculate_determinator2(s1, s3,
-                                            s2, s4)
-    det_a1: float = calculate_determinator2(s3, n,
-                                            s4, s1)
-
-    # коэффициенты линейной аппроксимации
-    a0: float = det_a0 / det
-    a1: float = det_a1 / det
-
-    f: Vector = [a1 * x[i] + a0 for i in range(n)]    # значения аппроксимирующей функции
-    e: Vector = [f[i] - y[i] for i in range(n)]       # ошибки воспроизведения
-    e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадратны ошибок
-
-    SE = calculate_squared_error(e)  # сумма квадратов ошибок
-
-    MAE = calculate_max_absolute_error(e)  # максимальная абсолютная ошибка
-
-    # вывод результатов
-
-    print("Промежуточные суммы:")
-    print(f"{s1=};\t{s2=};\t{s3=};\t{s4=}")
-
-    print("Определители:")
-    print(f"{det=};\t{det_a0=};\t{det_a1}")
-
-    print("Коэффициенты линейной аппроксимирующей функции:")
-    print(f"{a0=};\t{a1=}")
+    result = "f(x)="
+    for i in range(k):
+        result += f"+a{i}*x^{i}"
+    return result
 
 
-    print("Расчёт точности воспроизведения:")
-    print(build_table([x, y, f, e, e_square],
-                      ["x", "y", "f=a0+a1*x", "e=f-y", "e^2"]))
-    print("Мера отклонения:")
-    print(f"{SE=}")
-    print("Максимальная абсолютная ошибка:")
-    print(f"{MAE=}")
-
-    if is_plots_required:  # формирование графика
-        plt.plot(x, y, "o", label="исходные данные")
-        plt.plot(x, f, "-", label="аппроксимация")
-        plt.legend(loc="best")
-        title: str = f"Линейная аппроксимация f(x)={a1:3f}*x" + \
-                     f"{'+' if a0 > 0 else ''}{a0:3f}"
-        plt.title(title)
-
-        plt.show()
-
-
-def calculate_sums3(x: Vector, y: Vector) -> Tuple[float, float, float, float,
-                                                   float, float, float]:
+def build_title_function(coeffs: Vector) -> str:
     """
-    Вычисление s1, s2, s3, s4, s5, s6, s7
+    Функция, аналогичная build_header_function, но коэффициенты полинома записываются числами
+    :param coeffs: коэффициенты полинома
+    :return:       строка, представляющая полином
+    """
+    result = "f(x)="
+    for i, coeff in enumerate(coeffs):
+        str_coeff = f"{coeff:.4}*x^{i}"
+        if coeff > 0:
+            str_coeff = "+" + str_coeff
+        result += str_coeff
+    return result
+
+
+def calculate_sumsN(x: Vector, y: Vector, n: int) -> Vector:
+    """
+    Вычисление промежуточных сумм для алгоритма МНК
     :param x: отсчёты аппроксимируемой функции по X
     :param y: отсчёты аппроксимируемой функции по Y
-    :return: кортеж сумм: сумма(х), сумма(x*x), сумма(x*x*x), сумма(x*x*x*x), сумма(y), сумма(x*y), сумма(x*x*y)
+    :param n: степень аппроксимирующего полинома
+    :return:  набор сумм [sum(x), sum(x ** 2), ..., sum(x ** (2 * n)),
+                          sum(x * y), sum(x ** 2 * y), ..., sum(x ** n * y)]
     """
-    s1, s2, s3, s4, s5, s6, s7 = 0, 0, 0, 0, 0, 0, 0
+    x_sums: Vector = [0.0 for i in range(2 * n)]
+    y_sums: Vector = [0.0 for i in range(n + 1)]
+
     for xi, yi in zip(x, y):
-        s1 += xi
-        s2 += xi * xi
-        s3 += xi * xi * xi
-        s4 += xi * xi * xi * xi
-        s5 += yi
-        s6 += xi * yi
-        s7 += xi * xi * yi
-    return s1, s2, s3, s4, s5, s6, s7
+        for i in range(2 * n):
+            x_sums[i] += xi ** (i + 1)
+        for i in range(n + 1):
+            y_sums[i] += xi ** i * yi
+
+    return x_sums + y_sums  # конкатенация массивов
 
 
-def calculate_determinator3(a00: float, a01: float, a02: float,
-                            a10: float, a11: float, a12: float,
-                            a20: float, a21: float, a22: float) -> float:
+def calculate_determinatorN(matrix: Matrix, result: float = 0.0) -> float:
     """
-    Вычисление определителя матрицы 3x3
-    :param a00: 0й элемент 0й строки матрицы
-    :param a01: 1й элемент 0й строки матрицы
-    :param a02: 2й элемент 0й строки матрицы
-    :param a10: 0й элемент 1й строки матрицы
-    :param a11: 1й элемент 1й строки матрицы
-    :param a12: 2й элемент 1й строки матрицы
-    :param a20: 0й элемент 2й строки матрицы
-    :param a21: 1й элемент 2й строки матрицы
-    :param a22: 2й элемент 2й строки матрицы
-    :return:
+    Рекурсивное вычисление определителя путем разложения по первому столбцу
+    :param matrix: квадртная матрица
+    :param result: результат (для рекурсивных вызовов)
+    :return:       определитель
     """
-    return a00 * calculate_determinator2(a11, a12, a21, a22) - \
-           a10 * calculate_determinator2(a01, a02, a21, a22) + \
-           a20 * calculate_determinator2(a01, a02, a11, a12)
+    rows: int = len(matrix)
+    cols: int = len(matrix[0])
+
+    if rows == 2:  # базовый случай - матрица 2х2
+        return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+
+    for row_index in range(rows):
+        # "вырезание" подматрицы
+        sub_matrix: Matrix = [[matrix[i][j] for j in range(1, cols)]
+                                            for i in range(rows) if i != row_index]
+        sign: int = (-1) ** row_index                         # знак для разложения
+        sub_det: float = calculate_determinatorN(sub_matrix)  # определитель подматрицы
+        result += sign * matrix[row_index][0] * sub_det       # разложение
+
+    return result
 
 
-def main_square(is_plots_required: bool) -> None:
+def main_polynomial(is_plots_required: bool, k: int) -> Vector:
     """
-    Подпрограмма для квадратичной аппроксимации
+    Подпрограмма для полиномильной аппроксимации n-степени методом МНК
     :param is_plots_required: нужно ли строить график
+    :param k:                 степень аппроксимирующего полинома
+    :returns Vector:          выходные значения аппроксимированной функции
     """
-    filename = "input.csv"  # имя файла с исходными данными для квадратичной аппроксимации
+    filename = "input.csv"  # имя файла с исходными данными для аппроксимации
 
     print(f"Начало считывания входных значений из файла \"{filename}\"")
 
     x, y = read_inputs(filename)  # отсчёты аппроксимируемой функции
 
     n = len(x)  # количество отсчётов
-    if n != len(y):
-        raise ValueError
+    if n != len(y):       # если определитель близок к нулю
+        raise ValueError  # выбрасывается исключение
 
     print(f"Успешно считано {n} значений:")
     print("x: " + "  ".join(map(str, x)))
     print("y: " + "  ".join(map(str, y)))
 
-    s1, s2, s3, s4, s5, s6, s7 = calculate_sums3(x, y)  # промежуточные суммы
+    sums = calculate_sumsN(x, y, k)  # промежуточные суммы
 
-    # определители
-    det: float = calculate_determinator3(n,  s1, s2,
-                                         s1, s2, s3,
-                                         s2, s3, s4)
-    det_a0: float = calculate_determinator3(s5, s1, s2,
-                                            s6, s2, s3,
-                                            s7, s3, s4)
-    det_a1: float = calculate_determinator3(n, s5, s2,
-                                            s1, s6, s3,
-                                            s2, s7, s4)
-    det_a2: float = calculate_determinator3(n,  s1, s5,
-                                            s1, s2, s6,
-                                            s2, s3, s7)
+    left: Matrix = [[n if i + j == 0 else sums[i + j - 1] for j in range(k + 1)] for i in range(k + 1)]
+    right: Vector = sums[len(sums) - (k + 1):]
 
-    # коэффициенты квадратичной аппроксимации
-    a0: float = det_a0 / det
-    a1: float = det_a1 / det
-    a2: float = det_a2 / det
+    det: float = calculate_determinatorN(left)
+    if abs(det) < 1e-9:
+        raise ValueError
 
-    f: Vector = [a2 * x[i] * x[i] + a1 * x[i] + a0 for i in range(n)]    # аппроксимирующая функция
+    coef_dets: Vector = [calculate_determinatorN(replace_col(left, right, i)) for i in range(k + 1)]
+    coefs: Vector = [coef_det / det for coef_det in coef_dets]  # a0, a1, ..., ak
+
+    f: Vector = [sum([coefs[j] * x[i] ** j for j in range(k + 1)]) for i in range(n)]    # аппроксимирующая функция
     e: Vector = [f[i] - y[i] for i in range(n)]       # ошибки воспроизведения
-    e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадратны ошибок
+    e_square: Vector = [e[i] ** 2 for i in range(n)]  # квадраты ошибок
 
     SE = calculate_squared_error(e)  # сумма квадратов ошибок
 
@@ -289,18 +245,17 @@ def main_square(is_plots_required: bool) -> None:
     # вывод результатов
 
     print("Промежуточные суммы:")
-    print(f"{s1=};\t{s2=};\t{s3=};\t{s4=};\t{s5=};\t{s6=};\t{s7=}")
+    print("; ".join(map(lambda x: f"s{x + 1}={sums[x]}", range(len(sums)))))
 
     print("Определители:")
-    print(f"{det=};\t{det_a0=};\t{det_a1=};\t{det_a2=}")
+    print(f"{det=}; " + "; ".join(map(lambda x: f"det_a{x}={coef_dets[x]}", range(len(coef_dets)))))
 
-    print("Коэффициенты квадратичной аппроксимирующей функции:")
-    print(f"{a0=};\t{a1=};\t{a2=}")
-
+    print("Коэффициенты аппроксимирующей функции:")
+    print("; ".join(map(lambda x: f"a{x}={coefs[x]}", range(len(coefs)))))
 
     print("Расчёт точности воспроизведения:")
     print(build_table([x, y, f, e, e_square],
-                      ["x", "y", "f=a0+a1*x+a2*x*x", "e=f-y", "e^2"]))
+                      ["x", "y", build_header_function(k), "e=f-y", "e^2"]))
     print("Мера отклонения:")
     print(f"{SE=}")
     print("Максимальная абсолютная ошибка:")
@@ -310,15 +265,19 @@ def main_square(is_plots_required: bool) -> None:
         plt.plot(x, y, "o", label="исходные данные")
         plt.plot(x, f, "-", label="аппроксимация")
         plt.legend(loc="best")
-        title: str = f"Квадратичная аппроксимация f(x)={a2:3f}*x*x" + \
-                     f"{'+' if a0 > 0 else ''}{a1:3f}*x" + \
-                     f"{'+' if a0 > 0 else ''}{a0:3f}"
+        plt.grid()
+        title: str = "Полиномиальная аппроксимация " + build_title_function(coefs)
         plt.title(title)
 
         plt.show()
+
+    return f
 
 
 if __name__ == "__main__":
-    is_plots_required = True  # нужно ли строить графики
-    # main_linear(is_plots_required)
-    # main_square(is_plots_required)
+    is_plots_required = False  # нужно ли строить графики
+    main_polynomial(is_plots_required, 1)
+    main_polynomial(is_plots_required, 2)
+    main_polynomial(is_plots_required, 3)
+    main_polynomial(is_plots_required, 4)
+    main_polynomial(is_plots_required, 5)
