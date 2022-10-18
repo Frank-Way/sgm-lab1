@@ -1,8 +1,9 @@
 import math
 
 from matplotlib import pyplot as plt
+import numpy as np
 import csv
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Any
 
 Vector = List[float]   # список вещественных чисел
 Matrix = List[Vector]  # список векторов
@@ -879,9 +880,190 @@ def main_polynomial_two_inputs(k: int, function: Callable, x_min: float, x_max: 
     return f
 
 
+def appoximate(x1: Vector, x2: Vector, y: Vector, k: int) -> Tuple[List[Tuple[int, int]], Vector]:
+    left, right = PowerPairs.calculate(k, x1, x2, y)
+
+    det: float = calculate_determinatorN(left)
+    if abs(det) < 1e-20:
+        raise ValueError
+    powers_vector = PowerPairs.get_range(0, k + 1, 0, k)
+    coefs_count = len(powers_vector)
+
+    coef_dets: Vector = [calculate_determinatorN(replace_col(left, right, i)) for i in range(coefs_count)]
+    coefs: Vector = [coef_det / det for coef_det in coef_dets]  # a0, a1, ..., ak
+
+    return powers_vector, coefs
+
+
+def get_split_data(parts_count: int, x_min: float, x_max: float, steps_count: int) -> List[Vector]:
+    space = x_max - x_min
+    part_space = space / parts_count
+    parts = []
+    for part_num in range(parts_count):
+        part = lin_space(start=x_min + part_num * part_space,
+                         stop=x_min + (part_num + 1) * part_space,
+                         size=int(steps_count / parts_count))
+        parts.append(part)
+    
+    return parts
+
+
+def populate_and_calculate(x1_part: Vector, x2_part: Vector, function: Callable) -> Tuple[int, Vector, Vector, Vector]:
+    n1, n2 = len(x1_part), len(x2_part)
+    n = n1 * n2
+
+    y: Vector = [0.0 for i in range(n)]
+    x1: Vector = [0.0 for i in range(n)]
+    x2: Vector = [0.0 for i in range(n)]
+    i = 0
+    for x1_value in x1_part:
+        for x2_value in x2_part:
+            x1[i] = x1_value
+            x2[i] = x2_value
+            y[i] = function((x1_value, x2_value))
+            i += 1
+    return n, x1, x2, y
+
+
+def flat(lst: List[List[Any]]) -> List[Any]:
+    result = []
+    for item in lst:
+        result.extend(item)
+    return result
+
+
+def plot_part(x1_min: float, x1_max: float, x2_min: float, x2_max: float, coefs: Vector,
+         powers_vector: List[Tuple[int, int]]) -> None:
+    approximation = lambda args: sum(
+        [args[2][j] * (args[0] ** args[3][j][0]) * (args[1] ** args[3][j][1]) for j in range(len(args[3]))])
+
+    import numpy as np
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+    x, y = np.linspace(x1_min, x1_max, 11), np.linspace(x2_min, x2_max, 11)
+    X, Y = np.meshgrid(x, y)
+    Z = approximation((X, Y, coefs, powers_vector))
+    F = np.sin(np.pi / 2 * X) * np.cos(np.pi / 2 * Y)
+
+    ax1.plot_surface(X, Y, Z, cmap='inferno')
+    ax1.set_xlabel("x")
+    ax1.set_ylabel("y")
+    ax1.set_zlabel("z")
+    ax1.set_title("Аппроксимация участка")
+    ax2.plot_surface(X, Y, F, cmap='inferno')
+    ax2.set_xlabel("x")
+    ax2.set_ylabel("y")
+    ax2.set_zlabel("z")
+    ax2.set_title("Участок исходной функции")
+    plt.show()
+
+
+def plot_full(x1_parts_count: int, x1_min: float, x1_max: float,
+              x2_parts_count: int, x2_min: float, x2_max: float,
+              coefs: List[Vector], powers_vector: List[List[Tuple[int, int]]]) -> None:
+    approximation = lambda args: sum(
+        [args[2][j] * (args[0] ** args[3][j][0]) * (args[1] ** args[3][j][1]) for j in range(len(args[3]))])
+
+    import numpy as np
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+    steps_count = 49
+    x_parts = get_split_data(x1_parts_count, x1_min, x1_max, steps_count)
+    y_parts = get_split_data(x2_parts_count, x2_min, x2_max, steps_count)
+    cnt = 0
+    Z_parts = []
+    for x_part in x_parts:
+        for y_part in y_parts:
+            X_part, Y_part = np.meshgrid(x_part, y_part)
+            Z_part = approximation((X_part, Y_part, coefs[cnt], powers_vector[cnt]))
+            Z_parts.append(Z_part)
+            cnt += 1
+    res = np.hstack([np.vstack(Z_parts[i * x2_parts_count: (i + 1) * x2_parts_count]) for i in range(x1_parts_count)])
+    Z = res
+    x, y = np.linspace(x1_min, x1_max, steps_count - 1), np.linspace(x2_min, x2_max, steps_count - 1)
+    X, Y = np.meshgrid(x, y)
+    F = np.sin(np.pi / 2 * X) * np.cos(np.pi / 2 * Y)
+
+    ax1.plot_surface(X, Y, Z, cmap='inferno')
+    ax1.set_xlabel("x")
+    ax1.set_ylabel("y")
+    ax1.set_zlabel("z")
+    ax1.set_title("Кусочная аппроксимация")
+    ax2.plot_surface(X, Y, F, cmap='inferno')
+    ax2.set_xlabel("x")
+    ax2.set_ylabel("y")
+    ax2.set_zlabel("z")
+    ax2.set_title("Исходная функция")
+    plt.show()
+
+
+def main_partial_two_inputs(k: int, function: Callable, is_plots_required: bool,
+                            x1_parts_count: int, x1_min: float, x1_max: float, x1_steps_count: int,
+                            x2_parts_count: int, x2_min: float, x2_max: float, x2_steps_count: int):
+    print("Кусочная аппроксимация функции двух переменных")
+    print("Первая переменная:")
+    print(f"- количество участков разбиения: {x1_parts_count}")
+    print(f"- минимальное и максимальное значения: {x1_min}; {x1_max}")
+    print(f"- количество значений: {x1_steps_count}")
+    print("Вторая переменная:")
+    print(f"- количество участков разбиения: {x2_parts_count}")
+    print(f"- минимальное и максимальное значения: {x2_min}; {x2_max}")
+    print(f"- количество значений: {x2_steps_count}")
+    total_parts_count = x1_parts_count * x2_parts_count
+    print(f"Общее число участков разбиения: {total_parts_count}")
+    print(f"Степень полинома, аппроксимирующего участок: {k}")
+    x1_parts = get_split_data(x1_parts_count, x1_min, x1_max, x1_steps_count)
+    x2_parts = get_split_data(x2_parts_count, x2_min, x2_max, x2_steps_count)
+    cnt = 1
+    y_parts, f_parts, e_parts = [], [], []
+    full_x1_parts, full_x2_parts = [], []
+    coefs_parts, powers_parts = [], []
+    for x1_part in x1_parts:
+        for x2_part in x2_parts:
+            n, x1, x2, y = populate_and_calculate(x1_part, x2_part, function)
+            full_x1_parts.append(x1)
+            full_x2_parts.append(x2)
+            powers_vector, coefs = appoximate(x1, x2, y, k)
+            coefs_parts.append(coefs)
+            powers_parts.append(powers_vector)
+            coefs_count = len(powers_vector)
+            f: Vector = [sum([coefs[j] * (x1[i] ** powers_vector[j][0]) * (x2[i] ** powers_vector[j][1]) for j in
+                              range(coefs_count)]) for i in range(n)]  # аппроксимирующая функция
+            e = [f_value - y_value for f_value, y_value in zip(f, y)]
+            y_parts.append(y)
+            f_parts.append(f)
+            e_parts.append(e)
+            print(f"{cnt}-й участок аппроксимации")
+            cnt += 1
+            print(f"{x1_part[0]} <= x1 <= {x1_part[-1]};  {x2_part[0]} <= x2 <= {x2_part[-1]}")
+            print(f"coefficients: {coefs}")
+            MAE = calculate_max_absolute_error(e)
+            print(f"max absolute error: {MAE}")
+            MSE = calculate_squared_error(e)
+            print(f"mean squared error: {MSE}")
+
+            if is_plots_required:
+                plot_part(x1_part[0], x1_part[-1], x2_part[0], x2_part[-1], coefs, powers_vector)
+    full_y = flat(y_parts)
+    full_f = flat(f_parts)
+    full_e = [f_value - y_value for f_value, y_value in zip(full_f, full_y)]
+    print("Результаты по всем участкам:")
+    print(f"coefficients: {coefs_parts}")
+    MAE = calculate_max_absolute_error(full_e)
+    print(f"max absolute error: {MAE}")
+    MSE = calculate_squared_error(full_e)
+    print(f"mean squared error: {MSE}")
+    if is_plots_required:
+        plot_full(x1_parts_count, x1_min, x1_max,
+                  x2_parts_count, x2_min, x2_max,
+                  coefs_parts, powers_parts)
+
+
 if __name__ == "__main__":
     filename = "input.csv"  # имя файла с исходными данными для аппроксимации
-    is_plots_required = False  # нужно ли строить графики
+    is_plots_required = True  # нужно ли строить графики
 
     # main_polynomial(filename, is_plots_required, 1)
     # main_polynomial(filename, is_plots_required, 2)
@@ -895,9 +1077,15 @@ if __name__ == "__main__":
     # main_logarithmic(filename, is_plots_required)
     # main_logarithmic_with_k(filename, is_plots_required)
 
-
     function = lambda x: math.sin(math.pi / 2 * x[0]) * math.cos(math.pi / 2 * x[1])
-    x_min = 0.0
-    x_max = 1.0
-    steps_count = 501
-    main_polynomial_two_inputs(7, function, x_min, x_max, steps_count, is_plots_required)
+    # x_min = 0.0
+    # x_max = 1.0
+    # steps_count = 501
+    # main_polynomial_two_inputs(7, function, x_min, x_max, steps_count, is_plots_required)
+    x1_parts_count, x2_parts_count = 2, 2
+    x1_min, x2_min = 0.0, 0.0
+    x1_max, x2_max = 1.0, 1.0
+    x1_steps_count, x2_steps_count = 251, 251
+    main_partial_two_inputs(2, function, is_plots_required,
+                            x1_parts_count, x1_min, x1_max, x1_steps_count,
+                            x2_parts_count, x2_min, x2_max, x2_steps_count)
