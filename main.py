@@ -904,7 +904,7 @@ def get_split_data(parts_count: int, x_min: float, x_max: float, steps_count: in
                          stop=x_min + (part_num + 1) * part_space,
                          size=int(steps_count / parts_count))
         parts.append(part)
-    
+
     return parts
 
 
@@ -969,7 +969,7 @@ def plot_full(x1_parts_count: int, x1_min: float, x1_max: float,
     fig = plt.figure()
     ax1 = fig.add_subplot(1, 2, 1, projection='3d')
     ax2 = fig.add_subplot(1, 2, 2, projection='3d')
-    steps_count = 49
+    steps_count = 60
     x_parts = get_split_data(x1_parts_count, x1_min, x1_max, steps_count)
     y_parts = get_split_data(x2_parts_count, x2_min, x2_max, steps_count)
     cnt = 0
@@ -982,7 +982,7 @@ def plot_full(x1_parts_count: int, x1_min: float, x1_max: float,
             cnt += 1
     res = np.hstack([np.vstack(Z_parts[i * x2_parts_count: (i + 1) * x2_parts_count]) for i in range(x1_parts_count)])
     Z = res
-    x, y = np.linspace(x1_min, x1_max, steps_count - 1), np.linspace(x2_min, x2_max, steps_count - 1)
+    x, y = np.linspace(x1_min, x1_max, steps_count), np.linspace(x2_min, x2_max, steps_count)
     X, Y = np.meshgrid(x, y)
     F = np.sin(np.pi / 2 * X) * np.cos(np.pi / 2 * Y)
 
@@ -1082,10 +1082,10 @@ if __name__ == "__main__":
     # x_max = 1.0
     # steps_count = 501
     # main_polynomial_two_inputs(7, function, x_min, x_max, steps_count, is_plots_required)
-    x1_parts_count, x2_parts_count = 2, 2
+    x1_parts_count, x2_parts_count = 1, 1
     x1_min, x2_min = 0.0, 0.0
     x1_max, x2_max = 1.0, 1.0
-    x1_steps_count, x2_steps_count = 251, 251
-    main_partial_two_inputs(2, function, is_plots_required,
+    x1_steps_count, x2_steps_count = 501, 501
+    main_partial_two_inputs(1, function, is_plots_required,
                             x1_parts_count, x1_min, x1_max, x1_steps_count,
                             x2_parts_count, x2_min, x2_max, x2_steps_count)
